@@ -15,10 +15,6 @@ data.sort_values(by='Date', inplace=True)
 data['Company'] = data['Company'].str.replace(
     r'\d+\.', '', regex=True).str.strip()
 
-# Global variable for maximum trade quantity
-# This can be adjusted by the AI as part of its learning process
-MAX_TRADE_QUANTITY = 20
-
 
 def identify_pairs(correlation_matrix, threshold=0.95):
     pairs = []
@@ -212,8 +208,9 @@ def adjust_parameters_based_on_roi(roi, last_roi, increment_factor=0.01):
 
 
 # Initialize variables
+MAX_TRADE_QUANTITY = 10
 last_roi = 0
-initial_capital = 100000
+initial_capital = 50000
 portfolio = initialize_portfolio(initial_capital)
 daily_portfolio_values_last_gen = []
 portfolio_values = []
@@ -332,3 +329,4 @@ plt.title('Portfolio Composition')
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
