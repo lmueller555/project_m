@@ -1,125 +1,100 @@
-import pandas as pd
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-import os
+from keras.models import Sequential
+from keras.layers import LSTM, Dense, Dropout
+from arch import arch_model
 
-# File path for the Excel file
-file_path = 'C:\\Users\\lmueller\\Desktop\\Project M\\Compiled_Companies_Data_with_MA.xlsx'
+# Define the window size for the moving window
+window_size = 30
 
-# Reading the data from the Excel file
-dataset = pd.read_excel(file_path)
+# Function to create sequences with a 30-day window
+def create_correct_sequences(data, window_size):
+    X = []
+    y = []
+    for i in range(window_size, len(data)):
+        X.append(data[i - window_size:i, :-1])
+        y.append(data[i, -1])
+    return np.array(X), np.array(y)
 
-# Convert 'Date' to datetime and sort by date
-dataset['Date'] = pd.to_datetime(dataset['Date'])
-dataset.sort_values('Date', inplace=True)
+# Load your dataset
+data = pd.read_csv('C:\\Users\\lennon.mueller\\Onedrive - Western Governors University\\Desktop\\Project M\\Project_M_Statistical_Data.csv')
 
-# Selecting features
-features = ['Close/Last', 'Open', 'Daily High', 'Daily Low', '200d MA']
+# Check for constant columns
+print("Checking for constant columns...")
+for column in data.columns:
+    if data[column].nunique() == 1:
+        print(f"Column {column} is constant and should be removed.")
 
-# Normalize the data
-scaler = MinMaxScaler(feature_range=(0, 1))
+# Ensure 'Close/Last' is not in features
+feature_columns = data.columns.drop(['Date', 'Company', 'Close/Last'])
+assert 'Close/Last' not in feature_columns, "'Close/Last' should not be a feature."
+print("Features used for training:", feature_columns)
 
-# Sequence length
-sequence_length = 60
+# Segmenting the dataset by company
+unique_companies = data['Company'].unique()
+updated_dataframes = []
 
-# Dictionary to store scalers for each company
-scalers = {}
+for company in unique_companies:
+    print(f"Processing data for {company}...")
 
-# Dictionary to store predictions
-all_predictions = {}
+    company_data = data[data['Company'] == company]
+    dates = company_data['Date'].values
 
-# Loop over each company
-for company in dataset['Company'].unique():
-    print(f"Processing {company}")
+    company_features = company_data[feature_columns]
+    company_features = company_features.fillna(method='ffill')
+    close_prices = company_data['Close/Last'].values.reshape(-1, 1)
 
-    # Filter data for the current company
-    company_data = dataset[dataset['Company'] == company][features]
-
-    # Normalize the company data
     scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(company_data)
-    scalers[company] = scaler  # Store the scaler for inverse scaling later
+    scaled_features = scaler.fit_transform(company_features)
+    close_scaler = MinMaxScaler(feature_range=(0, 1)).fit(close_prices)
 
-    # Generate training and testing data for the company
-    X, y = [], []
-    for i in range(sequence_length, len(scaled_data)):
-        X.append(scaled_data[i - sequence_length:i])
-        y.append(scaled_data[i, 0])  # Assuming 'Close/Last' is at index 0
+    scaled_features = np.hstack((scaled_features, close_scaler.transform(close_prices)))
 
-    X = np.array(X)
-    y = np.array(y)
+    X, y = create_correct_sequences(scaled_features, window_size)
 
-    # Split into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    # Check if a model already exists for this company
-    model_filename = f'best_lstm_model_{company}.h5'
-    if not os.path.exists(model_filename):
-        # Build LSTM model for the company
-        model = Sequential()
-        model.add(LSTM(units=50, return_sequences=True,
-                  input_shape=(X_train.shape[1], X_train.shape[2])))
-        model.add(Dropout(0.2))
-        model.add(LSTM(units=50, return_sequences=False))
-        model.add(Dropout(0.2))
-        model.add(Dense(units=1))  # Predicting 'Close/Last'
+    model = Sequential()
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+    model.add(Dropout(0.2))
+    model.add(LSTM(units=50))
+    model.add(Dropout(0.2))
+    model.add(Dense(units=1))
 
-        model.compile(optimizer='adam', loss='mean_squared_error')
+    model.compile(optimizer='adam', loss='mean_squared_error')
 
-        # Callbacks for early stopping and model saving
-        early_stopping = EarlyStopping(
-            monitor='val_loss', patience=10, restore_best_weights=True)
-        model_checkpoint = ModelCheckpoint(
-            model_filename, monitor='val_loss', save_best_only=True)
+    model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
 
-        # Train the model for the company
-        model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(
-            X_test, y_test), callbacks=[early_stopping, model_checkpoint])
-        print(f"Model for {company} trained and saved as '{model_filename}'")
-    else:
-        # Load the existing model
-        model = tf.keras.models.load_model(model_filename)
-        print(f"Model for {company} loaded from '{model_filename}'")
+    predicted = model.predict(X)
+    predicted_prices = close_scaler.inverse_transform(predicted.reshape(-1, 1))
 
-    # Prepare data for prediction (reshape into sequence format)
-    prediction_data = []
-    for i in range(len(scaled_data) - sequence_length):
-        seq = scaled_data[i:i + sequence_length]
-        if seq.shape[0] == sequence_length:
-            prediction_data.append(seq)
+    # Prepare the data for adjusted predictions
+    company_data = company_data.iloc[window_size:]
+    company_data['Original Prediction'] = predicted_prices.flatten()
+    company_data['Original Prediction Change'] = company_data['Original Prediction'].diff()
 
-    prediction_data = np.array(prediction_data)
+    # Calculate adjusted predictions
+    adjusted_predictions = []
+    for index, row in company_data.iterrows():
+        # Calculate dynamic mean and standard deviation for Historical_Volatility up to the current day
+        historical_volatility_mean = company_data.loc[:index, 'Historical_Volatility'].mean()
+        historical_volatility_std = company_data.loc[:index, 'Historical_Volatility'].std()
 
-    # Generate predictions for the entire dataset for this company
-    if prediction_data.shape[0] > 0:
-        company_predictions = model.predict(prediction_data)
+        # Check if Historical_Volatility is at least 1 standard deviation above the mean
+        if row['Historical_Volatility'] > historical_volatility_mean + historical_volatility_std:
+            adjusted_pred = row['Original Prediction'] + ((row['Historical_Volatility'] * 100) * (row['Original Prediction Change'] /10))
+        else:
+            adjusted_pred = row['Original Prediction']  # Use original prediction if below the threshold
 
-        # Inverse scale the predictions to get actual values
-        company_predictions = scaler.inverse_transform(np.hstack((company_predictions, np.zeros(
-            (company_predictions.shape[0], scaled_data.shape[1] - 1)))))[:, 0]
-        all_predictions[company] = company_predictions
-    else:
-        print(f"No prediction data available for {company}")
+        adjusted_predictions.append(adjusted_pred)
 
-# Creating a DataFrame from the predictions dictionary
-predictions_df = pd.DataFrame(all_predictions)
+    company_data['Adjusted Prediction'] = adjusted_predictions
 
-# Add the Date column from the original dataset
-dates = dataset['Date'][sequence_length:].reset_index(drop=True)
-predictions_df.insert(0, 'Date', dates)
+    updated_dataframes.append(company_data)
 
-# Generating a new filename for the predictions file
-original_filename = os.path.basename(file_path)
-new_filename = original_filename.replace('.xlsx', '_Predictions.csv')
+    model.save(f'{company}_model.h5')
 
-# Save to CSV
-predictions_file_path = os.path.join(os.path.dirname(file_path), new_filename)
-predictions_df.to_csv(predictions_file_path, index=False)
-
-print(f"Predictions saved to {predictions_file_path}")
+final_data = pd.concat(updated_dataframes)
+final_data.to_csv('C:\\Users\\lennon.mueller\\Onedrive - Western Governors University\\Desktop\\Project M\\Project_M_Statistical_Data_Predictions2.csv', index=False)
