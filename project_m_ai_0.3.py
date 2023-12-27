@@ -96,7 +96,7 @@ def sell_stock(portfolio, stock, price):
 
 
 def momentum_trading(row, portfolio):
-    momentum_threshold = 0.05  # 5%
+    momentum_threshold = 0.025  # 5%
     stock = row['Company'].strip()
     price = row['Close/Last']
     prediction = row['Prediction']
@@ -108,7 +108,7 @@ def momentum_trading(row, portfolio):
 
 
 def mean_reversion(row, portfolio):
-    mean_rev_threshold = 0.05  # 5%
+    mean_rev_threshold = 0.025  # 5%
     stock = row['Company'].strip()
     price = row['Close/Last']
     if row['Close/Last'] < row['30d MA'] * (1 - mean_rev_threshold):
@@ -210,7 +210,7 @@ def adjust_parameters_based_on_roi(roi, last_roi, increment_factor=0.01):
 # Initialize variables
 MAX_TRADE_QUANTITY = 10
 last_roi = 0
-initial_capital = 50000
+initial_capital = 100000
 portfolio = initialize_portfolio(initial_capital)
 daily_portfolio_values_last_gen = []
 portfolio_values = []
