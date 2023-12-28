@@ -197,28 +197,39 @@ class PerformanceAnalytics:
 
     def select_parameters(self, opening_price, previous_closing_price):
         if opening_price > previous_closing_price * 1.01:
-            return self.parameter_space["upper_bound"]
+            return "upper_bound"
         elif opening_price < previous_closing_price * 0.99:
-            return self.parameter_space["lower_bound"]
+            return "lower_bound"
         else:
-            return self.parameter_space["original"]
+            return "original"
 
     def simulate_trading(self, selected_parameters, daily_data, current_prices, opening_price, previous_closing_price):
         # Temporarily store original parameters
         original_parameters = self.parameters.copy()
 
-        # Select and update trading parameters based on opening and previous closing prices
-        selected_parameters = self.select_parameters(
+        # Select the type of predicted price based on opening and previous closing prices
+        price_type = self.select_parameters(
             opening_price, previous_closing_price)
-        self.parameters.update(selected_parameters)
 
         # Run the trading strategies for the day
         for _, row in daily_data.iterrows():
             company = row['Company'].strip()
             price = row['Close/Last']
-            prediction = row['Prediction']
-            # Default to 0 if not available
+            # Select the appropriate predicted price based on the price type
+            if price_type == "upper_bound":
+                prediction = row.get(
+                    'Prediction Upper Bound', row['Prediction'])
+            elif price_type == "lower_bound":
+                prediction = row.get(
+                    'Prediction Lower Bound', row['Prediction'])
+            else:  # "original"
+                prediction = row['Prediction']
+
+            # Default to 0 if 30d MA is not available
             thirty_day_ma = row.get('30d MA', 0)
+
+            # Update parameters for the trading strategy
+            trading_strategy.update_parameters(selected_parameters)
 
             trading_strategy.momentum_trading(company, price, prediction)
             trading_strategy.mean_reversion(company, price, thirty_day_ma)
@@ -234,7 +245,7 @@ class PerformanceAnalytics:
 
         return daily_roi, portfolio_value
 
-    def evaluate_trading_strategy(self, parameter_combinations, daily_data, current_prices, opening_price, previous_closing_price):
+    def evaluate_trading_strategy(self, predicted_price_type, parameter_combinations, daily_data, current_prices):
         best_portfolio_value = float('-inf')
         best_parameters = None
 
@@ -245,7 +256,7 @@ class PerformanceAnalytics:
 
             # Simulate trading with the current set of parameters
             _, portfolio_value = self.simulate_trading(
-                selected_parameters, daily_data, current_prices, opening_price, previous_closing_price)
+                selected_parameters, daily_data, current_prices, predicted_price_type)
 
             # Check if the current set of parameters results in the highest portfolio value so far
             if portfolio_value > best_portfolio_value:
@@ -381,3 +392,4 @@ plt.title('Portfolio Composition')
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
