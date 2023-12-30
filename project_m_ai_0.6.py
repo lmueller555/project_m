@@ -2,7 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import re
-import itertools
 
 
 class DataProcessor:
@@ -28,24 +27,13 @@ parameters = {
     "mean_rev_threshold": 0.025,
     "swing_threshold": 0.05,
     "entry_threshold": 0.05,
-    "exit_threshold": 0.03,
-    "max_trade_quantity": 10,
+    "exit_threshold": 0.05,
+    "max_trade_quantity": 15,
     "historical_window": 60,
-    "correlation_threshold": 0.95,
+    "correlation_threshold": 0.90,
+    "negative_correlation_threshold": -0.85,
     "evaluation_interval": 30
     # "increment_factor": 0.01
-}
-
-parameter_space = {
-    "momentum_threshold": [0.025, 0.05, 0.075],
-    "mean_rev_threshold": [0.025, 0.05, 0.075],
-    "swing_threshold": [0.025, 0.05, 0.075],
-    "entry_threshold": [0.025, 0.05, 0.075],
-    "exit_threshold": [0.025, 0.05, 0.075],
-    "max_trade_quantity": [10, 15, 20],
-    "historical_window": [60],
-    "correlation_threshold": [0.85, 0.90, 0.95],
-    "evaluation_interval": [30]
 }
 
 
@@ -54,19 +42,35 @@ class PairAnalyzer:
         self.parameters = parameters
 
     def identify_pairs(self, correlation_matrix):
-        pairs = []
+        # Flatten the correlation matrix and sort by correlation
+        flattened = []
         for i in range(len(correlation_matrix.columns)):
             for j in range(i+1, len(correlation_matrix.columns)):
-                if correlation_matrix.iloc[i, j] > self.parameters['correlation_threshold']:
-                    pairs.append(
-                        (correlation_matrix.columns[i], correlation_matrix.columns[j]))
+                pair = (
+                    correlation_matrix.columns[i], correlation_matrix.columns[j])
+                correlation = correlation_matrix.iloc[i, j]
+                flattened.append((pair, correlation))
+
+        flattened.sort(key=lambda x: x[1])
+
+        # Print the top 3 most negatively correlated
+        # print("Top 3 most negatively correlated pairs:")
+        for pair, correlation in flattened[:3]:
+            print(pair, correlation)
+
+        # Print the top 3 most positively correlated
+        # print("Top 3 most positively correlated pairs:")
+        for pair, correlation in flattened[-3:]:
+            print(pair, correlation)
+
+        # Identifying pairs based on the threshold
+        pairs = [pair for pair, correlation in flattened if correlation >
+                 self.parameters['correlation_threshold']]
         return pairs
 
     def calculate_normal_ratios(self, pivoted_data, pair):
-        # Convert historical_window to an integer to prevent type issues
-        historical_window = int(self.parameters['historical_window'])
         daily_ratios = pivoted_data[pair[0]] / pivoted_data[pair[1]]
-        return daily_ratios[-historical_window:].mean()
+        return daily_ratios[-self.parameters['historical_window']:].mean()
 
     @staticmethod
     def reformat_pair_names(pair):
@@ -80,10 +84,6 @@ class PortfolioManager:
 
     def initialize_portfolio(self, initial_capital):
         return {'cash': initial_capital, 'stocks': {}}
-
-    def update_parameters(self, new_parameters):
-        """Update trading parameters with new values."""
-        self.parameters.update(new_parameters)
 
     def buy_stock(self, stock, price):
         quantity = min(
@@ -102,7 +102,7 @@ class PortfolioManager:
             self.portfolio['stocks'][stock]['quantity'] = total_quantity
             self.portfolio['stocks'][stock]['average_buying_price'] = average_price
 
-            print(f"After buying {stock}, portfolio: {self.portfolio}")
+            # print(f"After buying {stock}, portfolio: {self.portfolio}")
 
     def sell_stock(self, stock, price):
         if stock in self.portfolio['stocks']:
@@ -115,7 +115,9 @@ class PortfolioManager:
                 if self.portfolio['stocks'][stock]['quantity'] == 0:
                     del self.portfolio['stocks'][stock]
 
-                print(f"After selling {stock}, portfolio: {self.portfolio}")
+                # After selling a stock
+                print(
+                    f"Current cash balance: {self.portfolio['cash']} after selling {stock}.")
 
     # Additional methods for portfolio management can be added here, if needed.
 
@@ -125,25 +127,33 @@ class TradingStrategy:
         self.portfolio_manager = portfolio_manager
         self.parameters = parameters
 
-    def momentum_trading(self, company, price, prediction):
+    def momentum_trading(self, row):
+        stock = row['Company'].strip()
+        price = row['Close/Last']
+        prediction = row['Prediction']
+
         if prediction > price * (1 + self.parameters['momentum_threshold']):
-            self.portfolio_manager.buy_stock(company, price)
+            self.portfolio_manager.buy_stock(stock, price)
         elif prediction < price * (1 - self.parameters['momentum_threshold']):
-            self.portfolio_manager.sell_stock(company, price)
+            self.portfolio_manager.sell_stock(stock, price)
 
-    def mean_reversion(self, company, price, thirty_day_ma):
-        if price < thirty_day_ma * (1 - self.parameters['mean_rev_threshold']):
-            self.portfolio_manager.buy_stock(company, price)
-        elif price > thirty_day_ma * (1 + self.parameters['mean_rev_threshold']):
-            self.portfolio_manager.sell_stock(company, price)
+    def mean_reversion(self, row):
+        stock = row['Company'].strip()
+        price = row['Close/Last']
+        if row['Close/Last'] < row['30d MA'] * (1 - self.parameters['mean_rev_threshold']):
+            self.portfolio_manager.buy_stock(stock, price)
+        elif row['Close/Last'] > row['30d MA'] * (1 + self.parameters['mean_rev_threshold']):
+            self.portfolio_manager.sell_stock(stock, price)
 
-    def swing_trading(self, company, price, prediction):
-        if prediction > price * (1 + self.parameters['swing_threshold']):
-            self.portfolio_manager.buy_stock(company, price)
-        elif prediction < price * (1 - self.parameters['swing_threshold']):
-            self.portfolio_manager.sell_stock(company, price)
+    def swing_trading(self, row):
+        stock = row['Company'].strip()
+        price = row['Close/Last']
+        if row['Prediction'] > price * (1 + self.parameters['swing_threshold']):
+            self.portfolio_manager.buy_stock(stock, price)
+        elif row['Prediction'] < price * (1 - self.parameters['swing_threshold']):
+            self.portfolio_manager.sell_stock(stock, price)
 
-    def pair_trading(self, aggregated_day_data, pairs, normal_ratios):
+    def pair_trading(self, aggregated_day_data, pairs, normal_ratios, current_correlation_matrix):
         for pair in pairs:
             stock1, stock2 = pair
 
@@ -154,6 +164,7 @@ class TradingStrategy:
                     stock2_data['Close/Last']
                 normal_ratio = normal_ratios[pair]
 
+                # Buy logic
                 if current_ratio < normal_ratio * (1 - self.parameters['entry_threshold']):
                     if self.portfolio_manager.portfolio['cash'] >= stock1_data['Close/Last']:
                         self.portfolio_manager.buy_stock(
@@ -164,15 +175,60 @@ class TradingStrategy:
                         self.portfolio_manager.buy_stock(
                             stock2, stock2_data['Close/Last'])
 
-                if normal_ratio * (1 - self.parameters['exit_threshold']) < current_ratio < normal_ratio * (1 + self.parameters['exit_threshold']):
-                    # Logic to close the trade here
-                    pass
+                # Consolidated sell and buy logic
+                for stock, stock_data in [(stock1, stock1_data), (stock2, stock2_data)]:
+                    sell_condition = False
+
+                    # Check if the stock meets the mean reversion sell condition
+                    if normal_ratio * (1 - self.parameters['exit_threshold']) < current_ratio < normal_ratio * (1 + self.parameters['exit_threshold']):
+                        sell_condition = True
+
+                    # Check for 5% drop below 30-day MA
+                    elif stock_data['Close/Last'] < stock_data['30d MA'] * 0.95:
+                        sell_condition = True
+
+                    if sell_condition:
+                        if stock in self.portfolio_manager.portfolio and self.portfolio_manager.portfolio[stock] > 0:
+                            self.portfolio_manager.sell_stock(
+                                stock, stock_data['Close/Last'])
+
+                    # Identifying the most negatively correlated stock
+                    most_negatively_correlated = current_correlation_matrix[stock].idxmin(
+                    )
+                    correlation_value = current_correlation_matrix[stock][most_negatively_correlated]
+                    print(
+                        f"Identified {most_negatively_correlated} as the most negatively correlated stock to {stock} with a correlation of {correlation_value}.")
+                    print(
+                        f"Correlation of {most_negatively_correlated} with {stock}: {correlation_value}, Threshold: {self.parameters['negative_correlation_threshold']}")
+
+                    if correlation_value <= self.parameters['negative_correlation_threshold']:
+                        print(
+                            f"{most_negatively_correlated} meets the negative correlation threshold.")
+                        if most_negatively_correlated not in pair:
+                            negatively_correlated_stock_data = aggregated_day_data[
+                                most_negatively_correlated]
+
+                            if self.portfolio_manager.portfolio['cash'] >= negatively_correlated_stock_data['Close/Last']:
+                                print(
+                                    f"Attempting to buy {most_negatively_correlated}. Cash available: {self.portfolio_manager.portfolio['cash']}, Price needed: {negatively_correlated_stock_data['Close/Last']}.")
+                                self.portfolio_manager.buy_stock(
+                                    most_negatively_correlated, negatively_correlated_stock_data['Close/Last'])
+                                print(
+                                    f"Bought {most_negatively_correlated} as a hedge against {stock}.")
+                            else:
+                                print(
+                                    f"Insufficient cash to buy {most_negatively_correlated}. Cash available: {self.portfolio_manager.portfolio['cash']}, Price needed: {negatively_correlated_stock_data['Close/Last']}.")
+                        else:
+                            print(
+                                f"Not buying {most_negatively_correlated} as it is part of the current pair.")
+                    else:
+                        print(
+                            f"{most_negatively_correlated} does not meet the negative correlation threshold.")
 
 
 class PerformanceAnalytics:
     def __init__(self, parameters):
         self.parameters = parameters
-        self.parameter_space = parameter_space
 
     @staticmethod
     def calculate_portfolio_value(portfolio, current_prices):
@@ -195,75 +251,16 @@ class PerformanceAnalytics:
         trough = min(portfolio_values)
         return (peak - trough) / peak
 
-    def select_parameters(self, opening_price, previous_closing_price):
-        if opening_price > previous_closing_price * 1.01:
-            return "upper_bound"
-        elif opening_price < previous_closing_price * 0.99:
-            return "lower_bound"
-        else:
-            return "original"
+    def adjust_parameters_based_on_roi(self, roi, last_roi):
+        increment_factor = self.parameters['increment_factor']
 
-    def simulate_trading(self, selected_parameters, daily_data, current_prices, opening_price, previous_closing_price):
-        # Temporarily store original parameters
-        original_parameters = self.parameters.copy()
-
-        # Select the type of predicted price based on opening and previous closing prices
-        price_type = self.select_parameters(
-            opening_price, previous_closing_price)
-
-        # Run the trading strategies for the day
-        for _, row in daily_data.iterrows():
-            company = row['Company'].strip()
-            price = row['Close/Last']
-            # Select the appropriate predicted price based on the price type
-            if price_type == "upper_bound":
-                prediction = row.get(
-                    'Prediction Upper Bound', row['Prediction'])
-            elif price_type == "lower_bound":
-                prediction = row.get(
-                    'Prediction Lower Bound', row['Prediction'])
-            else:  # "original"
-                prediction = row['Prediction']
-
-            # Default to 0 if 30d MA is not available
-            thirty_day_ma = row.get('30d MA', 0)
-
-            # Update parameters for the trading strategy
-            trading_strategy.update_parameters(selected_parameters)
-
-            trading_strategy.momentum_trading(company, price, prediction)
-            trading_strategy.mean_reversion(company, price, thirty_day_ma)
-            trading_strategy.swing_trading(company, price, prediction)
-
-        # Calculate the portfolio value after the day's trading
-        portfolio_value = self.calculate_portfolio_value(
-            portfolio_manager.portfolio, current_prices)
-        daily_roi = self.calculate_roi(50000, portfolio_value)
-
-        # Reset parameters to original after simulation
-        self.parameters = original_parameters
-
-        return daily_roi, portfolio_value
-
-    def evaluate_trading_strategy(self, predicted_price_type, parameter_combinations, daily_data, current_prices):
-        best_portfolio_value = float('-inf')
-        best_parameters = None
-
-        for params_tuple in parameter_combinations:
-            # Convert tuple back to dictionary
-            selected_parameters = dict(
-                zip(parameter_space.keys(), params_tuple))
-
-            # Simulate trading with the current set of parameters
-            _, portfolio_value = self.simulate_trading(
-                selected_parameters, daily_data, current_prices, predicted_price_type)
-
-            # Check if the current set of parameters results in the highest portfolio value so far
-            if portfolio_value > best_portfolio_value:
-                best_portfolio_value = portfolio_value
-                best_parameters = selected_parameters
-
-        return best_parameters, best_portfolio_value
+        if roi > last_roi:  # If ROI has increased
+            self.parameters['max_trade_quantity'] = int(
+                self.parameters['max_trade_quantity'] * (1 + increment_factor))
+        elif roi < last_roi:  # If ROI has decreased
+            self.parameters['max_trade_quantity'] = max(
+                1, int(self.parameters['max_trade_quantity'] * (1 - increment_factor)))
+        # Additional logic for adjusting other strategy thresholds can be added here
 
 
 # Initialize classes with the dataset file path
@@ -271,20 +268,15 @@ data_processor = DataProcessor(
     'C:\\Users\\lmueller\\Desktop\\Project M\\Project_M_Statistical_Data_Predictions2.csv')
 pair_analyzer = PairAnalyzer(parameters)
 
-# Initialize PortfolioManager and TradingStrategy
+# Initialize PortfolioManager once outside the generation loop
 portfolio_manager = PortfolioManager(50000, parameters)
 trading_strategy = TradingStrategy(portfolio_manager, parameters)
-
-# Generate all possible combinations of parameters
-parameter_combinations = list(itertools.product(
-    *(parameter_space[key] for key in sorted(parameter_space))))
-
-# Initialize PerformanceAnalytics with parameters
 performance_analytics = PerformanceAnalytics(parameters)
 
-# Prepare for the simulation
 daily_portfolio_values_last_gen = []
+evaluation_interval = parameters['evaluation_interval']
 num_generations = 1
+generation_rois = []
 
 unique_trading_days = pd.to_datetime(data_processor.data['Date'].unique())
 unique_trading_days = np.sort(unique_trading_days)
@@ -297,10 +289,10 @@ for generation in range(num_generations):
         trading_day = pd.Timestamp(trading_day)
         print(f"Processing trading day: {trading_day.strftime('%Y-%m-%d')}")
 
-        # Prepare data for the day's trading
         historical_data = data_processor.data[data_processor.data['Date'] <= trading_day]
         pivoted_historical_data = historical_data.pivot(
             index='Date', columns='Company', values='Close/Last')
+
         current_correlation_matrix = pivoted_historical_data.corr()
         current_pairs = pair_analyzer.identify_pairs(
             current_correlation_matrix)
@@ -314,50 +306,40 @@ for generation in range(num_generations):
         if daily_data.empty:
             continue
 
-        # Extract opening price and previous closing price
-        opening_price = daily_data['Open'].iloc[0]
-        # Handle the case for the first day in the dataset
-        previous_day_data = data_processor.data[data_processor.data['Date'] < trading_day]
-        if previous_day_data.empty:
-            previous_closing_price = opening_price  # Use opening price as a fallback
-        else:
-            previous_closing_price = previous_day_data['Close/Last'].iloc[-1]
-
+        # Update current_prices for the day
         current_prices = {row['Company'].strip(): row['Close/Last']
                           for _, row in daily_data.iterrows()}
 
-        # Evaluate trading strategy for the day
-        best_parameters, _ = performance_analytics.evaluate_trading_strategy(
-            parameter_combinations, daily_data, current_prices, opening_price, previous_closing_price)
+        aggregated_day_data = {row['Company'].strip(
+        ): row for _, row in daily_data.iterrows()}
+        for _, row in aggregated_day_data.items():
+            trading_strategy.momentum_trading(row)
+            trading_strategy.mean_reversion(row)
+            trading_strategy.swing_trading(row)
 
-        # Apply the best parameters and execute trading strategies
-        portfolio_manager.update_parameters(best_parameters)
-        for _, row in daily_data.iterrows():
-            company = row['Company'].strip()
-            price = row['Close/Last']
-            prediction = row['Prediction']
-            thirty_day_ma = row['30d MA']
+        trading_strategy.pair_trading(
+            aggregated_day_data, formatted_current_pairs, current_normal_ratios, current_correlation_matrix)
 
-            trading_strategy.momentum_trading(company, price, prediction)
-            trading_strategy.mean_reversion(company, price, thirty_day_ma)
-            trading_strategy.swing_trading(company, price, prediction)
-
-        # Calculate and store the day's portfolio value
         current_value = performance_analytics.calculate_portfolio_value(
             portfolio_manager.portfolio, current_prices)
         portfolio_values.append(current_value)
 
-        # Calculate ROI for the day
-        daily_roi = performance_analytics.calculate_roi(50000, current_value)
+        if len(portfolio_values) % evaluation_interval == 0:
+            current_roi = performance_analytics.calculate_roi(
+                50000, current_value)
+            max_drawdown = performance_analytics.calculate_maximum_drawdown(
+                portfolio_values[-evaluation_interval:])
+            print(
+                f"Day {trading_day.strftime('%Y-%m-%d')}: ROI: {current_roi:.2%}, Max Drawdown: {max_drawdown:.2%}")
 
-        # Print portfolio value and ROI
-        print(
-            f"End of {trading_day.strftime('%Y-%m-%d')}: Portfolio Value: ${current_value:,.2f}, ROI: {daily_roi:.2%}")
+    # Just before the final valuation
+    print(f"Final Portfolio before valuation: {portfolio_manager.portfolio}")
+    print(f"Final Current Prices: {current_prices}")
 
-    # End of generation processing
     final_value = performance_analytics.calculate_portfolio_value(
         portfolio_manager.portfolio, current_prices)
     final_roi = performance_analytics.calculate_roi(50000, final_value)
+
     print(f"End of Generation {generation + 1}: Final ROI: {final_roi:.2%}")
     print(
         f"Total Portfolio Value at End of Generation {generation + 1}: ${final_value:,.2f}")
@@ -367,12 +349,13 @@ for generation in range(num_generations):
     if generation == num_generations - 1:
         daily_portfolio_values_last_gen = portfolio_values.copy()
 
-# Extracting final portfolio details
+# After the loop over generations
 final_portfolio = portfolio_manager.portfolio
+
+# Extracting stock names and their quantities from the final portfolio
 stock_names = list(final_portfolio['stocks'].keys())
 quantities = [final_portfolio['stocks'][stock]['quantity']
               for stock in stock_names]
-
 
 # Plotting daily portfolio values for the last generation
 plt.figure(figsize=(14, 7))
@@ -392,4 +375,3 @@ plt.title('Portfolio Composition')
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
-
