@@ -87,20 +87,21 @@ class PortfolioManager:
     def initialize_portfolio(self, initial_capital):
         return {'cash': initial_capital, 'stocks': {}}
 
-    def buy_stock(self, stock, price):
+    def buy_stock(self, stock, price, strategy_name):
         quantity = min(
             self.parameters['max_trade_quantity'], self.portfolio['cash'] // price)
-        trade_info = {'stock': stock, 'action': 'buy', 'quantity': 0, 'price': price}
+        trade_info = {'stock': stock, 'action': 'buy', 'strategy': strategy_name,
+                    'quantity': 0, 'price': price}
 
         if quantity > 0 and stock not in self.portfolio['stocks']:
             self.portfolio['stocks'][stock] = {
-                'quantity': 0, 'average_buying_price': 0}
+                'quantity': 0, 'average_buying_price': 0, 'buying_strategy': strategy_name}
 
         if quantity > 0:
             total_cost = price * quantity
             total_quantity = self.portfolio['stocks'][stock]['quantity'] + quantity
             average_price = ((self.portfolio['stocks'][stock]['average_buying_price'] *
-                              self.portfolio['stocks'][stock]['quantity']) + total_cost) / total_quantity
+                            self.portfolio['stocks'][stock]['quantity']) + total_cost) / total_quantity
 
             self.portfolio['cash'] -= total_cost
             self.portfolio['stocks'][stock]['quantity'] = total_quantity
@@ -111,16 +112,20 @@ class PortfolioManager:
         return trade_info
 
     def sell_stock(self, stock, price):
-        trade_info = {'stock': stock, 'action': 'sell', 'quantity': 0, 'price': price}
+        trade_info = {'stock': stock, 'action': 'sell', 'quantity': 0, 'price': price, 'profit': 0}
 
         if stock in self.portfolio['stocks']:
             quantity = min(
                 self.parameters['max_trade_quantity'], self.portfolio['stocks'][stock]['quantity'])
             if quantity > 0:
+                realized_profit = (price - self.portfolio['stocks'][stock]['average_buying_price']) * quantity
+                trade_info['profit'] = realized_profit  # Record the profit on the sale
+
                 self.portfolio['cash'] += price * quantity
                 self.portfolio['stocks'][stock]['quantity'] -= quantity
 
                 if self.portfolio['stocks'][stock]['quantity'] == 0:
+                    trade_info['strategy'] = self.portfolio['stocks'][stock]['buying_strategy']
                     del self.portfolio['stocks'][stock]
 
                 trade_info['quantity'] = quantity
@@ -143,7 +148,7 @@ class TradingStrategy:
         trade_info = None
 
         if prediction > price * (1 + self.parameters['momentum_threshold']):
-            trade_info = self.portfolio_manager.buy_stock(stock, price)
+            trade_info = self.portfolio_manager.buy_stock(stock, price, 'Momentum Trading')
         elif prediction < price * (1 - self.parameters['momentum_threshold']):
             trade_info = self.portfolio_manager.sell_stock(stock, price)
 
@@ -157,7 +162,7 @@ class TradingStrategy:
         trade_info = None
 
         if row['Close/Last'] < row['30d MA'] * (1 - self.parameters['mean_rev_threshold']):
-            trade_info = self.portfolio_manager.buy_stock(stock, price)
+            trade_info = self.portfolio_manager.buy_stock(stock, price, 'Mean Reversion')
         elif row['Close/Last'] > row['30d MA'] * (1 + self.parameters['mean_rev_threshold']):
             trade_info = self.portfolio_manager.sell_stock(stock, price)
 
@@ -165,13 +170,14 @@ class TradingStrategy:
             trade_info['strategy'] = 'Mean Reversion'
             self.trading_data.append(trade_info)
 
+
     def swing_trading(self, row):
         stock = row['Company'].strip()
         price = row['Close/Last']
         trade_info = None
 
         if row['Prediction'] > price * (1 + self.parameters['swing_threshold']):
-            trade_info = self.portfolio_manager.buy_stock(stock, price)
+            trade_info = self.portfolio_manager.buy_stock(stock, price, 'Swing Trading')
         elif row['Prediction'] < price * (1 - self.parameters['swing_threshold']):
             trade_info = self.portfolio_manager.sell_stock(stock, price)
 
@@ -193,14 +199,14 @@ class TradingStrategy:
                 # Buy logic
                 if current_ratio < normal_ratio * (1 - self.parameters['entry_threshold']):
                     if self.portfolio_manager.portfolio['cash'] >= stock1_data['Close/Last']:
-                        trade_info = self.portfolio_manager.buy_stock(stock1, stock1_data['Close/Last'])
+                        trade_info = self.portfolio_manager.buy_stock(stock1, stock1_data['Close/Last'], 'Pair Trading')
                         if trade_info['quantity'] > 0:
                             trade_info['strategy'] = 'Pair Trading'
                             self.trading_data.append(trade_info)
 
                 elif current_ratio > normal_ratio * (1 + self.parameters['entry_threshold']):
                     if self.portfolio_manager.portfolio['cash'] >= stock2_data['Close/Last']:
-                        trade_info = self.portfolio_manager.buy_stock(stock2, stock2_data['Close/Last'])
+                        trade_info = self.portfolio_manager.buy_stock(stock2, stock2_data['Close/Last'], 'Pair Trading')
                         if trade_info['quantity'] > 0:
                             trade_info['strategy'] = 'Pair Trading'
                             self.trading_data.append(trade_info)
@@ -227,13 +233,13 @@ class TradingStrategy:
                     # Identifying the most negatively correlated stock
                     most_negatively_correlated = current_correlation_matrix[stock].idxmin()
                     correlation_value = current_correlation_matrix[stock][most_negatively_correlated]
-                    
+
                     if correlation_value <= self.parameters['negative_correlation_threshold']:
                         if most_negatively_correlated not in pair:
                             negatively_correlated_stock_data = aggregated_day_data[most_negatively_correlated]
 
                             if self.portfolio_manager.portfolio['cash'] >= negatively_correlated_stock_data['Close/Last']:
-                                trade_info = self.portfolio_manager.buy_stock(most_negatively_correlated, negatively_correlated_stock_data['Close/Last'])
+                                trade_info = self.portfolio_manager.buy_stock(most_negatively_correlated, negatively_correlated_stock_data['Close/Last'], 'Pair Trading')
                                 if trade_info['quantity'] > 0:
                                     trade_info['strategy'] = 'Pair Trading'
                                     self.trading_data.append(trade_info)
@@ -371,10 +377,11 @@ quantities = [final_portfolio['stocks'][stock]['quantity']
               for stock in stock_names]
 
 
-# Counting trades and calculating profits per strategy
-trade_counts = {'Momentum Trading': 0, 'Mean Reversion': 0, 'Swing Trading': 0, 'Pair Trading': 0}
+# Initialize profits and counts per strategy
 strategy_profits = {'Momentum Trading': 0, 'Mean Reversion': 0, 'Swing Trading': 0, 'Pair Trading': 0}
+strategy_trade_counts = {'Momentum Trading': 0, 'Mean Reversion': 0, 'Swing Trading': 0, 'Pair Trading': 0}
 
+# Calculate realized profits from sells and count trades
 for trade in trading_strategy.trading_data:
     strategy = trade['strategy']
     stock = trade['stock']
@@ -383,23 +390,19 @@ for trade in trading_strategy.trading_data:
     price = trade['price']
 
     # Update trade counts
-    trade_counts[strategy] += 1
+    strategy_trade_counts[strategy] += 1
 
-    # Calculate profit/loss
-    if stock in final_portfolio['stocks']:
-        stock_data = final_portfolio['stocks'][stock]
-        if action == 'sell':
-            profit = (price - stock_data['average_buying_price']) * quantity
-            strategy_profits[strategy] += profit
-        # For buys, we will consider profit calculation at the end of the generation
+    # Realized profit calculation on sell trades
+    if action == 'sell':
+        profit = trade.get('profit', 0)  # Retrieve the profit from the trade info
+        strategy_profits[strategy] += profit
 
-# Adding unrealized profits for the stocks still held
+# Calculate unrealized profits for the stocks still held
 for stock, stock_data in final_portfolio['stocks'].items():
     current_price = current_prices[stock]
+    buying_strategy = stock_data.get('buying_strategy', 'Unknown')  # Default to 'Unknown' if not set
     unrealized_profit = (current_price - stock_data['average_buying_price']) * stock_data['quantity']
-    # Assuming equal distribution of unrealized profit across strategies
-    for strategy in strategy_profits:
-        strategy_profits[strategy] += unrealized_profit / len(strategy_profits)
+    strategy_profits[buying_strategy] += unrealized_profit
 
 # Plotting daily portfolio values for the last generation
 plt.figure(figsize=(14, 7))
@@ -412,19 +415,34 @@ plt.show()
 
 # Bar graph for the number of trades per strategy
 plt.figure(figsize=(14, 7))
-plt.bar(trade_counts.keys(), trade_counts.values(), color='skyblue')
+plt.bar(strategy_trade_counts.keys(), strategy_trade_counts.values()), #color='skyblue')
 plt.title('Number of Trades by Strategy')
 plt.xlabel('Strategy')
 plt.ylabel('Number of Trades')
+plt.xticks(rotation=45)
+plt.tight_layout()
 plt.show()
 
 # Bar graph for the profit per strategy
 plt.figure(figsize=(14, 7))
-plt.bar(strategy_profits.keys(), strategy_profits.values(), color='lightgreen')
+# Sort the keys for consistent color mapping and ordering in the bar graph
+sorted_strategies = sorted(strategy_profits.keys())
+sorted_profits = [strategy_profits[strategy] for strategy in sorted_strategies]
+
+bars = plt.bar(sorted_strategies, sorted_profits)
+
+# Add value labels on top of each bar
+for bar in bars:
+    yval = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, yval, round(yval, 2), ha='center', va='bottom')
+
 plt.title('Profit by Strategy')
 plt.xlabel('Strategy')
 plt.ylabel('Profit')
+plt.xticks(rotation=45)
+plt.tight_layout()
 plt.show()
+
 
 # Creating the bar graph
 plt.figure(figsize=(14, 7))
@@ -435,6 +453,7 @@ plt.title('Portfolio Composition')
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
 
 
 
