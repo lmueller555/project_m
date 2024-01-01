@@ -444,15 +444,19 @@ plt.tight_layout()
 plt.show()
 
 
+# Pair each stock with its quantity and sort them
+stock_quantity_pairs = sorted(zip(stock_names, quantities), key=lambda x: x[1], reverse=True)
+sorted_stock_names, sorted_quantities = zip(*stock_quantity_pairs)
 # Creating the bar graph
 plt.figure(figsize=(14, 7))
-plt.bar(stock_names, quantities, color='blue')
+plt.bar(sorted_stock_names, sorted_quantities)
 plt.xlabel('Stocks')
 plt.ylabel('Quantity')
 plt.title('Portfolio Composition')
-plt.xticks(rotation=45)
+plt.xticks(rotation=80)
 plt.tight_layout()
 plt.show()
+
 
 
 
