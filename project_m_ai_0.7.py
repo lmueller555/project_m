@@ -36,7 +36,7 @@ parameters = {
     # "increment_factor": 0.01
 }
 
-#731.17%
+#695.96%
 
 
 class PairAnalyzer:
@@ -456,9 +456,6 @@ plt.title('Portfolio Composition')
 plt.xticks(rotation=80)
 plt.tight_layout()
 plt.show()
-
-
-
 
 
 #C:\\Users\\lennon.mueller\\Onedrive - Western Governors University\\Desktop\\Project M\\Project_M_Statistical_Data_Predictions2.csv
