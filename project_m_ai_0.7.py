@@ -36,7 +36,7 @@ parameters = {
     # "increment_factor": 0.01
 }
 
-#695.96%
+#782.39%
 
 
 class PairAnalyzer:
@@ -86,6 +86,11 @@ class PortfolioManager:
 
     def initialize_portfolio(self, initial_capital):
         return {'cash': initial_capital, 'stocks': {}}
+    
+    @staticmethod
+    def update_max_trade_quantity(parameters, current_portfolio_value):
+        # Calculate the max_trade_quantity based on the portfolio value
+        parameters['max_trade_quantity'] = 5 + int(current_portfolio_value * 0.0001)
 
     def buy_stock(self, stock, price, strategy_name):
         quantity = min(
@@ -328,6 +333,10 @@ for generation in range(num_generations):
         # Update current_prices for the day
         current_prices = {row['Company'].strip(): row['Close/Last']
                           for _, row in daily_data.iterrows()}
+        
+        # Update the max_trade_quantity based on the current portfolio value
+        current_portfolio_value = performance_analytics.calculate_portfolio_value(portfolio_manager.portfolio, current_prices)
+        parameters['max_trade_quantity'] = 5 + int(current_portfolio_value * 0.0001)
 
         aggregated_day_data = {row['Company'].strip(
         ): row for _, row in daily_data.iterrows()}
