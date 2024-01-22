@@ -16,6 +16,7 @@ options = webdriver.ChromeOptions()
 # Specify download directory, disable download prompt, headless option
 options.add_experimental_option('prefs', {
     "download.default_directory": r"C:\Users\lmueller\Desktop\Project M\Financial Data from Finviz",
+    # "download.default_directory": r"C:\Users\lmueller\Desktop\Project M\Financial Data from Finviz",
     "download.prompt_for_download": False,
     "download.directory_upgrade": True,
     "safebrowsing.enabled": True
