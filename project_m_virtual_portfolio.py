@@ -1,141 +1,108 @@
-import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
-import numpy as np
+import streamlit as st
 
 # Function to load data from GitHub
 def load_data():
     url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Project_M_Statistical_Data_Predictions4.csv'
-    df = pd.read_csv(url)
-    df['Date'] = pd.to_datetime(df['Date'])
-    return df
+    data = pd.read_csv(url)
+    data['Date'] = pd.to_datetime(data['Date'])
+    return data
 
-# Function to calculate total portfolio value
-def calculate_total_portfolio_value(portfolio, current_cash, todays_data):
-    total_value = current_cash
-    for ticker, details in portfolio.items():
-        current_price = todays_data[todays_data['Ticker'] == ticker].iloc[-1]['Close/Last'] if not todays_data[todays_data['Ticker'] == ticker].empty else 0
-        total_value += details['quantity'] * current_price
-    return total_value
+def find_next_trading_day(current_date, df):
+    """Find the next trading day after the current_date."""
+    next_day = df[df['Date'] > current_date]['Date'].min()
+    return next_day
 
-# Function to create a DataFrame from the portfolio for display and calculate total portfolio value
-def create_portfolio_display_df_and_value(portfolio, data, selected_date):
-    holdings = []
-    total_value = 0
-    for ticker, details in portfolio.items():
-        latest_data = data[data['Ticker'] == ticker].iloc[-1]  # Get the last available data
-        current_price = latest_data['Close/Last']
-        current_value = details['quantity'] * current_price
-        total_value += current_value  # Add to total portfolio value
-        holdings.append({
-            'Ticker': ticker,
-            'Buy Date': details['buy_date'].strftime('%Y-%m-%d'),
-            'Quantity': details['quantity'],
-            'Buy Price': details['buy_price'],
-            'Current Price': current_price,
-            'Current Value': current_value  # Add the current value
-        })
-    return pd.DataFrame(holdings), total_value
+def calculate_portfolio_value(portfolio, data, current_date):
+    """Calculate the total value of the portfolio for a given day."""
+    portfolio_value = 0
+    for ticker, holdings in portfolio.items():
+        for holding in holdings:
+            close_price = data[(data['Ticker'] == ticker) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
+            portfolio_value += holding['shares'] * close_price
+    return portfolio_value
 
-def calculate_total_portfolio_value(portfolio, current_cash, todays_data, last_known_prices):
-    total_value = current_cash
-    for ticker, details in portfolio.items():
-        # Check if today's data has the ticker's info, otherwise use the last known price
-        if not todays_data[todays_data['Ticker'] == ticker].empty:
-            current_price = todays_data[todays_data['Ticker'] == ticker]['Close/Last'].iloc[-1]
-            last_known_prices[ticker] = current_price  # Update the last known price
-        else:
-            # If the ticker is not in today's data, use the last known price
-            current_price = last_known_prices.get(ticker, details['buy_price'])  # Default to buy price if no price is known
+def execute_buy_logic(stock, portfolio, cash_balance, buy_percentage, data, current_date):
+    ticker_to_buy = stock['ticker']
+    available_cash_to_spend = cash_balance * buy_percentage
+    buy_price = data[(data['Ticker'] == ticker_to_buy) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
+    shares_to_buy = available_cash_to_spend // buy_price
+    cash_balance -= shares_to_buy * buy_price
+    sell_date = find_next_trading_day(current_date + pd.Timedelta(days=29), data)
+    portfolio.setdefault(ticker_to_buy, []).append({'buy_date': current_date, 'sell_date': sell_date, 'shares': shares_to_buy, 'buy_price': buy_price})
+    print(f"Bought {shares_to_buy} shares of {ticker_to_buy} on {current_date} at {buy_price} per share. New cash balance: {cash_balance}.")
+    return cash_balance
 
-        total_value += details['quantity'] * current_price
-    return total_value, last_known_prices
+def execute_sell_logic(ticker, portfolio, cash_balance, data, current_date):
+    if ticker in portfolio:
+        for holding in portfolio[ticker][:]:  # Iterate over a copy since we'll modify the list
+            sell_price = data[(data['Ticker'] == ticker) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
+            cash_balance += holding['shares'] * sell_price
+            print(f"Sold {holding['shares']} shares of {ticker} on {current_date} at {sell_price} per share. New cash balance: {cash_balance}.")
+            portfolio[ticker].remove(holding)  # Remove holding after selling
+    return cash_balance
 
-def run_simulation(data, start_date):
-    start_date = pd.Timestamp(start_date)
-    portfolio = {}  # Reset the portfolio at the start of the simulation
-    current_cash = 25000  # Reset the cash balance at the start of the simulation
-    portfolio_value_history = []
+st.title('Project M Trading Simulation')
+data = load_data()  # Load the dataset for Streamlit input and initial setup
 
-    # Get the trading dates from the dataset starting from the selected start date
-    trading_dates = data[data['Date'] >= start_date]['Date'].sort_values().unique()
+start_date = st.date_input('Select a starting date for the simulation:', value=data['Date'].min(), min_value=data['Date'].min(), max_value=data['Date'].max())
 
-    # Iterate through each trading date
-    for trading_index, single_date in enumerate(trading_dates):
-        todays_data = data[data['Date'] == single_date]
-        # Create a copy of the current portfolio for iterating
-        current_portfolio = portfolio.copy()
-        for ticker, details in current_portfolio.items():
-            buy_date_index = np.where(trading_dates == details['buy_date'])[0][0]
-            # Check if 30 trading days have passed
-            if trading_index - buy_date_index >= 30:
-                # Fetch sell data for this date
-                sell_data = todays_data[todays_data['Ticker'] == ticker]
-                if not sell_data.empty:
-                    sell_price = sell_data.iloc[0]['Open']
-                    earnings = details['quantity'] * sell_price
-                    current_cash += earnings
-                    print(f"Selling {details['quantity']} shares of {ticker} at {sell_price}, earning {earnings}")
-                    del portfolio[ticker]  # Remove stock from portfolio after selling
+if st.button('Run Simulation'):
+    filtered_data = data[data['Date'] >= pd.to_datetime(start_date)].sort_values('Date')
+    
+    portfolio = {}
+    cash_balance = 25000
+    initial_investment = cash_balance
+    buy_percentage = 0.5
+    daily_portfolio_values = []
 
-        # Implementing the buy logic
-        for _, row in todays_data.iterrows():
-            if row['30 Day Buy Signal'] == 1 and current_cash > 0:
-                investment_amount = current_cash * 0.50
-                quantity = int(investment_amount // row['Open'])
-                if quantity > 0:
-                    current_cash -= quantity * row['Open']
-                    portfolio[row['Ticker']] = {
-                        'buy_date': single_date,
-                        'quantity': quantity,
-                        'buy_price': row['Open']
-                    }
-                    print(f"Buying {quantity} shares of {row['Ticker']} at {row['Open']}, spending {quantity * row['Open']}")
+    unique_dates = filtered_data['Date'].unique()  # Ensure we iterate over each date once
 
-        # Calculate and print the portfolio value after each day
-        total_portfolio_value = calculate_total_portfolio_value(portfolio, current_cash, todays_data)
-        portfolio_value_history.append({'Date': single_date, 'Portfolio Value': total_portfolio_value})
-        print(f"Date: {single_date}, Cash: {current_cash}, Portfolio Value: {total_portfolio_value}")
+    for current_date in unique_dates:
+        print(f"Starting {current_date}: cash_balance = {cash_balance}")  # Start of day cash balance
 
-    # Update session state after simulation
-    st.session_state.portfolio = portfolio
-    st.session_state.current_cash = current_cash
-    st.session_state.portfolio_value_history = portfolio_value_history
+        todays_data = filtered_data[filtered_data['Date'] == current_date]
+        for index, row in todays_data.iterrows():
+            ticker = row['Ticker']
 
+            # Adjusted logic for buys and sells based on signals, removing the stocks_to_buy_next_day and stocks_to_sell_next_day lists
+            if row['30 Day Buy Signal'] == 1:
+                cash_balance = execute_buy_logic({'ticker': ticker}, portfolio, cash_balance, buy_percentage, data, current_date)
 
-# Streamlit app UI setup
-st.title("Paper Trading Simulator")
-data = load_data()
+            if row['30 Day Sell Signal'] == 1 and ticker in portfolio:
+                cash_balance = execute_sell_logic(ticker, portfolio, cash_balance, data, current_date)
 
-# Initialize session state variables
-if 'portfolio' not in st.session_state:
-    st.session_state.portfolio = {}
-if 'current_cash' not in st.session_state:
-    st.session_state.current_cash = 25000
-if 'selected_date' not in st.session_state:
-    st.session_state.selected_date = data['Date'].min()
+        # Remove empty holdings from the portfolio
+        for ticker in list(portfolio.keys()):
+            if not portfolio[ticker]:
+                del portfolio[ticker]
 
-# Date picker for selecting simulation start date
-selected_start_date = st.date_input("Select a start date for simulation", value=data['Date'].min())
+        portfolio_value = calculate_portfolio_value(portfolio, data, current_date) + cash_balance
+        daily_portfolio_values.append((current_date, portfolio_value))
 
-# Button to run simulation
-if st.button('Run Simulation from Selected Day'):
-    run_simulation(data, selected_start_date)
+    final_portfolio_value = daily_portfolio_values[-1][1]
+    roi = ((final_portfolio_value - initial_investment) / initial_investment) * 100
 
-    # Display final portfolio and cash balance
-    st.write("### Final Portfolio")
-    portfolio_df, total_portfolio_value = create_portfolio_display_df_and_value(
-        st.session_state.portfolio, data, data['Date'].max()
-    )
-    st.table(portfolio_df)
+    # Display final metrics
+    st.write(f"Final cash balance: {cash_balance}")
+    st.write(f"Final portfolio value: {final_portfolio_value}")
+    st.write(f"ROI: {roi}%")
 
-    st.write(f"### Final Cash Balance: ${st.session_state.current_cash:,.2f}")
-    st.write(f"### Total Portfolio Value: ${total_portfolio_value:,.2f}")
+    # Prepare and display final portfolio
+    flattened_portfolio_data = []
+    for ticker, holdings in portfolio.items():
+        for holding in holdings:
+            flattened_portfolio_data.append({
+                'Ticker': ticker,
+                'Buy Date': holding['buy_date'],
+                'Sell Date': holding['sell_date'],
+                'Shares': holding['shares'],
+                'Buy Price': holding['buy_price']
+            })
 
-    # Display historical portfolio value
-    portfolio_value_history_df = pd.DataFrame(st.session_state.portfolio_value_history)
-    portfolio_value_history_df['Date'] = pd.to_datetime(portfolio_value_history_df['Date'])
-    st.line_chart(portfolio_value_history_df.set_index('Date')['Portfolio Value'])
-
-# Ensure the date_input widget reflects the current state
-st.session_state.selected_date = selected_start_date
+    final_portfolio_table = pd.DataFrame(flattened_portfolio_data)
+    if not final_portfolio_table.empty:
+        st.write("Final Portfolio:")
+        st.dataframe(final_portfolio_table)
+    else:
+        st.write("Final Portfolio is empty.")
