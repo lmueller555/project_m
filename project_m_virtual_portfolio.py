@@ -1,129 +1,136 @@
 import pandas as pd
 import streamlit as st
 
-# Function to load data from GitHub
-def load_data():
-    url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Project_M_Statistical_Data_Predictions4.csv'
-    data = pd.read_csv(url)
-    data['Date'] = pd.to_datetime(data['Date'])
-    return data
-
-def find_next_trading_day(current_date, df):
-    """Find the next trading day after the current_date."""
-    next_day = df[df['Date'] > current_date]['Date'].min()
-    return next_day
-
-def find_30th_trading_day(current_date, df):
-    """Find the 30th trading day after the current_date."""
-    future_index = df.index[df['Date'] > current_date][29]  # Get the index of the 30th day ahead
-    if len(df.index[df['Date'] > current_date]) >= 30:
-        return df.at[future_index, 'Date']
-    else:
-        return None  # In case there aren't 30 trading days available in the data
-
-
-def calculate_portfolio_value(portfolio, data, current_date):
-    """Calculate the total value of the portfolio for a given day."""
-    portfolio_value = 0
-    for ticker, holdings in portfolio.items():
-        for holding in holdings:
-            close_price = data[(data['Ticker'] == ticker) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
-            portfolio_value += holding['shares'] * close_price
-    return portfolio_value
-
-def execute_buy_logic(stock, portfolio, cash_balance, buy_percentage, data, current_date):
-    ticker_to_buy = stock['ticker']
-    available_cash_to_spend = cash_balance * buy_percentage
-    buy_price = data[(data['Ticker'] == ticker_to_buy) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
-    shares_to_buy = available_cash_to_spend // buy_price
-    cash_balance -= shares_to_buy * buy_price
-    sell_date = find_30th_trading_day(current_date, data)
-    if sell_date:
-        portfolio.setdefault(ticker_to_buy, []).append({'buy_date': current_date, 'sell_date': sell_date, 'shares': shares_to_buy, 'buy_price': buy_price})
-        print(f"Bought {shares_to_buy} shares of {ticker_to_buy} on {current_date} at {buy_price} per share. Scheduled to sell on {sell_date}. New cash balance: {cash_balance}.")
-    else:
-        print(f"Could not schedule a sale for {ticker_to_buy} bought on {current_date} due to insufficient future trading days.")
-    return cash_balance
-
-
-def execute_sell_logic(stock, portfolio, cash_balance, data, current_date):
-    if stock['ticker'] in portfolio:
-        for holding in portfolio[stock['ticker']][:]:  # Iterate over a copy since we'll modify the list
-            sell_price = data[(data['Ticker'] == stock['ticker']) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
-            cash_balance += holding['shares'] * sell_price
-            print(f"Sold {holding['shares']} shares of {stock['ticker']} on {current_date} at {sell_price} per share. New cash balance: {cash_balance}.")
-            portfolio[stock['ticker']].remove(holding)  # Remove holding after selling
-    return cash_balance
-
+# Streamlit UI for selecting start date
 st.title('Project M Trading Simulation')
-data = load_data()  # Load the dataset for Streamlit input and initial setup
+selected_start_date = st.date_input("Select a Start Date for the Simulation")
+# Convert selected start date to datetime format to match dataset
+start_date = pd.to_datetime(selected_start_date)
 
-start_date = st.date_input('Select a starting date for the simulation:', value=data['Date'].min(), min_value=data['Date'].min(), max_value=data['Date'].max())
+# Button to start the simulation
+if st.button('Start Simulation'):
 
-if st.button('Run Simulation'):
-    filtered_data = data[data['Date'] >= pd.to_datetime(start_date)].sort_values('Date')
-    
-    portfolio = {}
-    cash_balance = 25000
-    initial_investment = cash_balance
-    buy_percentage = 0.5
-    daily_portfolio_values = []
-    stocks_to_buy_next_day = []  # Reintroducing this list
-    stocks_to_sell_next_day = []  # Reintroducing this list
+    # Load the dataset directly from GitHub
+    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Project_M_Statistical_Data_Predictions4.csv'
+    data_sorted = pd.read_csv(dataset_url)
+    data_sorted['Date'] = pd.to_datetime(data_sorted['Date'])
+    data_sorted = data_sorted.sort_values(by='Date')
 
-    unique_dates = filtered_data['Date'].unique()  # Iterate over each date once
+    # Initialize variables for the simulation
+    unique_dates = sorted(data_sorted['Date'].unique())
+    initial_cash = 25000  # Adjust as necessary
+    cash = initial_cash
+    portfolio = {}  # To track stocks bought
+    sell_signals = {}  # To track sell signals for next trading day
+    portfolio_value_records = []  # Use a list to collect records
 
-    for current_date in unique_dates:
-        print(f"Starting {current_date}: cash_balance = {cash_balance}")
+    # Create a date index mapping
+    date_index = {date: idx for idx, date in enumerate(unique_dates)}
 
-        # Execute scheduled buys and sells for today
-        for stock in stocks_to_buy_next_day[:]:  # Iterate over a copy since we'll modify the list
-            if stock['buy_date'] == current_date:
-                cash_balance = execute_buy_logic(stock, portfolio, cash_balance, buy_percentage, data, current_date)
-                stocks_to_buy_next_day.remove(stock)
-
-        for ticker in stocks_to_sell_next_day[:]:  # Iterate over a copy since we'll modify the list
-            if ticker['sell_date'] == current_date:
-                cash_balance = execute_sell_logic(ticker, portfolio, cash_balance, data, current_date)
-                stocks_to_sell_next_day.remove(ticker)
-
-        todays_data = filtered_data[filtered_data['Date'] == current_date]
-        for index, row in todays_data.iterrows():
-            ticker = row['Ticker']
-
-            # Schedule buys and sells for the next day based on signals
-            if row['30 Day Buy Signal'] == 1:
-                next_day = find_next_trading_day(current_date, data)
-                stocks_to_buy_next_day.append({'ticker': ticker, 'buy_date': next_day})
-
-            if row['30 Day Sell Signal'] == 1:
-                next_day = find_next_trading_day(current_date, data)
-                stocks_to_sell_next_day.append({'ticker': ticker, 'sell_date': next_day})
-                
-        portfolio_value = calculate_portfolio_value(portfolio, data, current_date) + cash_balance
-        daily_portfolio_values.append((current_date, portfolio_value))
-
-    final_portfolio_value = daily_portfolio_values[-1][1]
-    roi = ((final_portfolio_value - initial_investment) / initial_investment) * 100
-
-    st.write(f"Final cash balance: {cash_balance}")
-    st.write(f"Final portfolio value: {final_portfolio_value}")
-    st.write(f"ROI: {roi}%")
-
-    flattened_portfolio_data = []
-    for ticker, holdings in portfolio.items():
-        for holding in holdings:
-            flattened_portfolio_data.append({
-                'Ticker': ticker,
-                'Buy Date': holding['buy_date'],
-                'Sell Date': holding['sell_date'],
-                'Shares': holding['shares'],
-                'Buy Price': holding['buy_price']
-            })
-
-    final_portfolio_table = pd.DataFrame(flattened_portfolio_data)
-    if not final_portfolio_table.empty:
-        st.write("Final Portfolio:")
-        st.dataframe(final_portfolio_table)
+    # Adjusted to start from the selected start date
+    if start_date in unique_dates:
+        start_index = unique_dates.index(start_date)
     else:
-        st.write("Final Portfolio is empty.")
+        st.write("Selected start date is not available in the dataset.")
+        st.stop()
+
+    # Simulation starts here
+    for current_date in unique_dates[start_index:-1]:
+        today_index = date_index[current_date]
+        today_data = data_sorted[data_sorted['Date'] == current_date]
+
+        # Print current trading day
+        # Use Streamlit's write function for output in the app
+        print(f"Trading Day: {current_date.strftime('%Y-%m-%d')}")
+
+        # Execute sell orders from sell signals identified on the previous day
+        if current_date in sell_signals:
+            for stock in sell_signals[current_date]:
+                if stock in portfolio:
+                    for sell_date, info in portfolio.items():
+                        if stock in info:
+                            sell_price = data_sorted[(data_sorted['Date'] == current_date) & (
+                                data_sorted['Company'] == stock)]['Open'].values[0]
+                            cash += sell_price * info[stock]['shares']
+                            print(
+                                f"Sell Signal Executed: Sold {stock} for ${sell_price:.2f}/share, total ${sell_price * info[stock]['shares']:.2f}. New cash balance: ${cash:.2f}")
+                            # Remove sold stock from portfolio
+                            del portfolio[sell_date][stock]
+            # Clear sell signals for executed day
+            del sell_signals[current_date]
+
+        # Sell condition: Check if any stocks are to be sold today (existing condition)
+        if current_date in portfolio:
+            for stock, info in portfolio[current_date].items():
+                sell_price = data_sorted[(data_sorted['Date'] == current_date) & (
+                    data_sorted['Company'] == stock)]['Open'].values[0]
+                cash += sell_price * info['shares']
+                print(
+                    f"Sold {stock} for ${sell_price:.2f}/share, total ${sell_price * info['shares']:.2f}. New cash balance: ${cash:.2f}")
+            del portfolio[current_date]  # Remove sold stocks from portfolio
+
+        # Check for 30 Day Sell Signals and queue them for next trading day
+        for index, row in today_data.iterrows():
+            if row['30 Day Sell Signal'] == 1:
+                next_sell_day = unique_dates[min(
+                    today_index + 1, len(unique_dates)-1)]
+                if next_sell_day not in sell_signals:
+                    sell_signals[next_sell_day] = []
+                sell_signals[next_sell_day].append(row['Company'])
+
+        # Buy condition: Check for buy signals and place orders for the next day
+        for index, row in today_data.iterrows():
+            if row['30 Day Buy Signal'] == 1 and today_index + 1 < len(unique_dates):
+                next_day = unique_dates[today_index + 1]
+                amount_to_spend = cash * 0.5
+                next_day_data = data_sorted[(data_sorted['Date'] == next_day) & (
+                    data_sorted['Company'] == row['Company'])]
+                if not next_day_data.empty:
+                    next_day_open_price = next_day_data['Open'].values[0]
+                    shares_to_buy = amount_to_spend / next_day_open_price
+                    cash -= amount_to_spend
+                    # Determine sell date, 30 days later
+                    sell_date = unique_dates[min(
+                        today_index + 24, len(unique_dates)-1)]
+
+                    # Track buy in portfolio for future selling
+                    if sell_date not in portfolio:
+                        portfolio[sell_date] = {}
+                    portfolio[sell_date][row['Company']] = {
+                        'shares': shares_to_buy, 'buy_price': next_day_open_price}
+
+                    print(
+                        f"Buy Order: {row['Company']} at ${next_day_open_price} for {shares_to_buy:.2f} shares. Amount Spent: ${amount_to_spend:.2f}")
+                    print(f"Will sell on: {sell_date.strftime('%Y-%m-%d')}")
+                else:
+                    print(
+                        f"No trading data available for {row['Company']} on {next_day.strftime('%Y-%m-%d')}")
+
+    # Update portfolio value for current day
+        current_portfolio_value = cash  # Include current cash in portfolio value
+        for _, stocks in portfolio.items():
+            for stock, info in stocks.items():
+                stock_data_today = data_sorted[(data_sorted['Date'] == current_date) & (
+                    data_sorted['Company'] == stock)]
+                if not stock_data_today.empty:
+                    # If the stock was bought, use its last known price for value calculation
+                    last_price = stock_data_today['Open'].iloc[0]
+                    current_portfolio_value += last_price * info['shares']
+        portfolio_value_records.append(
+            {'Date': current_date, 'Value': current_portfolio_value})
+
+    # Convert the records list to a DataFrame for plotting
+    portfolio_values_df = pd.DataFrame(portfolio_value_records)
+
+    # Plot the portfolio value over time
+    st.line_chart(portfolio_values_df.set_index('Date'))
+
+    # Final calculations and displaying results...
+    final_portfolio_value = portfolio_values_df['Value'].iloc[-1] if not portfolio_values_df.empty else initial_cash
+    roi = ((final_portfolio_value - initial_cash) / initial_cash) * 100
+
+    st.write("Simulation has ended.")
+    st.write(f"Initial Investment: ${initial_cash:.2f}")
+    st.write(f"Final Portfolio Value: ${final_portfolio_value:.2f}")
+    st.write(f"Current Cash: ${cash:.2f}")
+    st.write(f"ROI: {roi:.2f}%")
