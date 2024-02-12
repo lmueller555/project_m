@@ -11,7 +11,7 @@ start_date = pd.to_datetime(selected_start_date)
 if st.button('Start Simulation'):
 
     # Load the dataset directly from GitHub
-    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Project_M_Statistical_Data_Predictions4.csv'
+    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
     data_sorted = pd.read_csv(dataset_url)
     data_sorted['Date'] = pd.to_datetime(data_sorted['Date'])
     data_sorted = data_sorted.sort_values(by='Date')
