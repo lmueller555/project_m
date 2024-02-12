@@ -13,6 +13,15 @@ def find_next_trading_day(current_date, df):
     next_day = df[df['Date'] > current_date]['Date'].min()
     return next_day
 
+def find_30th_trading_day(current_date, df):
+    """Find the 30th trading day after the current_date."""
+    future_index = df.index[df['Date'] > current_date][29]  # Get the index of the 30th day ahead
+    if len(df.index[df['Date'] > current_date]) >= 30:
+        return df.at[future_index, 'Date']
+    else:
+        return None  # In case there aren't 30 trading days available in the data
+
+
 def calculate_portfolio_value(portfolio, data, current_date):
     """Calculate the total value of the portfolio for a given day."""
     portfolio_value = 0
@@ -28,18 +37,22 @@ def execute_buy_logic(stock, portfolio, cash_balance, buy_percentage, data, curr
     buy_price = data[(data['Ticker'] == ticker_to_buy) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
     shares_to_buy = available_cash_to_spend // buy_price
     cash_balance -= shares_to_buy * buy_price
-    sell_date = find_next_trading_day(current_date + pd.Timedelta(days=29), data)
-    portfolio.setdefault(ticker_to_buy, []).append({'buy_date': current_date, 'sell_date': sell_date, 'shares': shares_to_buy, 'buy_price': buy_price})
-    print(f"Bought {shares_to_buy} shares of {ticker_to_buy} on {current_date} at {buy_price} per share. New cash balance: {cash_balance}.")
+    sell_date = find_30th_trading_day(current_date, data)
+    if sell_date:
+        portfolio.setdefault(ticker_to_buy, []).append({'buy_date': current_date, 'sell_date': sell_date, 'shares': shares_to_buy, 'buy_price': buy_price})
+        print(f"Bought {shares_to_buy} shares of {ticker_to_buy} on {current_date} at {buy_price} per share. Scheduled to sell on {sell_date}. New cash balance: {cash_balance}.")
+    else:
+        print(f"Could not schedule a sale for {ticker_to_buy} bought on {current_date} due to insufficient future trading days.")
     return cash_balance
 
-def execute_sell_logic(ticker, portfolio, cash_balance, data, current_date):
-    if ticker in portfolio:
-        for holding in portfolio[ticker][:]:  # Iterate over a copy since we'll modify the list
-            sell_price = data[(data['Ticker'] == ticker) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
+
+def execute_sell_logic(stock, portfolio, cash_balance, data, current_date):
+    if stock['ticker'] in portfolio:
+        for holding in portfolio[stock['ticker']][:]:  # Iterate over a copy since we'll modify the list
+            sell_price = data[(data['Ticker'] == stock['ticker']) & (data['Date'] == current_date)]['Close/Last'].iloc[0]
             cash_balance += holding['shares'] * sell_price
-            print(f"Sold {holding['shares']} shares of {ticker} on {current_date} at {sell_price} per share. New cash balance: {cash_balance}.")
-            portfolio[ticker].remove(holding)  # Remove holding after selling
+            print(f"Sold {holding['shares']} shares of {stock['ticker']} on {current_date} at {sell_price} per share. New cash balance: {cash_balance}.")
+            portfolio[stock['ticker']].remove(holding)  # Remove holding after selling
     return cash_balance
 
 st.title('Project M Trading Simulation')
@@ -55,40 +68,48 @@ if st.button('Run Simulation'):
     initial_investment = cash_balance
     buy_percentage = 0.5
     daily_portfolio_values = []
+    stocks_to_buy_next_day = []  # Reintroducing this list
+    stocks_to_sell_next_day = []  # Reintroducing this list
 
-    unique_dates = filtered_data['Date'].unique()  # Ensure we iterate over each date once
+    unique_dates = filtered_data['Date'].unique()  # Iterate over each date once
 
     for current_date in unique_dates:
-        print(f"Starting {current_date}: cash_balance = {cash_balance}")  # Start of day cash balance
+        print(f"Starting {current_date}: cash_balance = {cash_balance}")
+
+        # Execute scheduled buys and sells for today
+        for stock in stocks_to_buy_next_day[:]:  # Iterate over a copy since we'll modify the list
+            if stock['buy_date'] == current_date:
+                cash_balance = execute_buy_logic(stock, portfolio, cash_balance, buy_percentage, data, current_date)
+                stocks_to_buy_next_day.remove(stock)
+
+        for ticker in stocks_to_sell_next_day[:]:  # Iterate over a copy since we'll modify the list
+            if ticker['sell_date'] == current_date:
+                cash_balance = execute_sell_logic(ticker, portfolio, cash_balance, data, current_date)
+                stocks_to_sell_next_day.remove(ticker)
 
         todays_data = filtered_data[filtered_data['Date'] == current_date]
         for index, row in todays_data.iterrows():
             ticker = row['Ticker']
 
-            # Adjusted logic for buys and sells based on signals, removing the stocks_to_buy_next_day and stocks_to_sell_next_day lists
+            # Schedule buys and sells for the next day based on signals
             if row['30 Day Buy Signal'] == 1:
-                cash_balance = execute_buy_logic({'ticker': ticker}, portfolio, cash_balance, buy_percentage, data, current_date)
+                next_day = find_next_trading_day(current_date, data)
+                stocks_to_buy_next_day.append({'ticker': ticker, 'buy_date': next_day})
 
-            if row['30 Day Sell Signal'] == 1 and ticker in portfolio:
-                cash_balance = execute_sell_logic(ticker, portfolio, cash_balance, data, current_date)
-
-        # Remove empty holdings from the portfolio
-        for ticker in list(portfolio.keys()):
-            if not portfolio[ticker]:
-                del portfolio[ticker]
-
+            if row['30 Day Sell Signal'] == 1:
+                next_day = find_next_trading_day(current_date, data)
+                stocks_to_sell_next_day.append({'ticker': ticker, 'sell_date': next_day})
+                
         portfolio_value = calculate_portfolio_value(portfolio, data, current_date) + cash_balance
         daily_portfolio_values.append((current_date, portfolio_value))
 
     final_portfolio_value = daily_portfolio_values[-1][1]
     roi = ((final_portfolio_value - initial_investment) / initial_investment) * 100
 
-    # Display final metrics
     st.write(f"Final cash balance: {cash_balance}")
     st.write(f"Final portfolio value: {final_portfolio_value}")
     st.write(f"ROI: {roi}%")
 
-    # Prepare and display final portfolio
     flattened_portfolio_data = []
     for ticker, holdings in portfolio.items():
         for holding in holdings:
