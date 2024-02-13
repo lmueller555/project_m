@@ -82,7 +82,7 @@ if st.button('Start Simulation'):
         for index, row in today_data.iterrows():
             if row['30 Day Buy Signal'] == 1 and today_index + 1 < len(unique_dates):
                 next_day = unique_dates[today_index + 1]
-                amount_to_spend = cash * 0.25
+                amount_to_spend = cash * 0.50
                 next_day_data = data_sorted[(data_sorted['Date'] == next_day) & (
                     data_sorted['Company'] == row['Company'])]
                 if not next_day_data.empty:
