@@ -11,7 +11,8 @@ start_date = pd.to_datetime(selected_start_date)
 if st.button('Start Simulation'):
 
     # Load the dataset directly from GitHub
-    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
+    #dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
+    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main//Updated_Dataset_with_New_Signals.csv'
     data_sorted = pd.read_csv(dataset_url)
     data_sorted['Date'] = pd.to_datetime(data_sorted['Date'])
     data_sorted = data_sorted.sort_values(by='Date')
@@ -91,7 +92,7 @@ if st.button('Start Simulation'):
                     cash -= amount_to_spend
                     # Determine sell date, 30 days later
                     sell_date = unique_dates[min(
-                        today_index + 24, len(unique_dates)-1)]
+                        today_index + 15, len(unique_dates)-1)]
 
                     # Track buy in portfolio for future selling
                     if sell_date not in portfolio:
