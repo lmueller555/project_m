@@ -92,7 +92,7 @@ if st.button('Start Simulation'):
                     cash -= amount_to_spend
                     # Determine sell date, 30 days later
                     sell_date = unique_dates[min(
-                        today_index + 22, len(unique_dates)-1)]
+                        today_index + 8, len(unique_dates)-1)]
 
                     # Track buy in portfolio for future selling
                     if sell_date not in portfolio:
