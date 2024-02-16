@@ -12,7 +12,6 @@ if st.button('Start Simulation'):
 
     # Load the dataset directly from GitHub
     dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
-    #dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main//Updated_Dataset_with_New_Signals.csv'
     data_sorted = pd.read_csv(dataset_url)
     data_sorted['Date'] = pd.to_datetime(data_sorted['Date'])
     data_sorted = data_sorted.sort_values(by='Date')
@@ -74,16 +73,16 @@ if st.button('Start Simulation'):
         for index, row in today_data.iterrows():
             if row['30 Day Sell Signal'] == 1:
                 next_sell_day = unique_dates[min(
-                    today_index + 14, len(unique_dates)-1)]
+                    today_index + 1, len(unique_dates)-1)]
                 if next_sell_day not in sell_signals:
                     sell_signals[next_sell_day] = []
                 sell_signals[next_sell_day].append(row['Company'])
 
         # Buy condition: Check for buy signals and place orders for the next day
         for index, row in today_data.iterrows():
-            if row['30 Day Buy Signal'] == 1 and today_index + 1 < len(unique_dates):
-                next_day = unique_dates[today_index + 1]
-                amount_to_spend = cash * 0.50
+            if row['30 Day Buy Signal'] == 1 and today_index + 14 < len(unique_dates):
+                next_day = unique_dates[today_index + 14]
+                amount_to_spend = cash * 0.5
                 next_day_data = data_sorted[(data_sorted['Date'] == next_day) & (
                     data_sorted['Company'] == row['Company'])]
                 if not next_day_data.empty:
@@ -92,7 +91,7 @@ if st.button('Start Simulation'):
                     cash -= amount_to_spend
                     # Determine sell date, 30 days later
                     sell_date = unique_dates[min(
-                        today_index + 8, len(unique_dates)-1)]
+                        today_index + 22, len(unique_dates)-1)]
 
                     # Track buy in portfolio for future selling
                     if sell_date not in portfolio:
@@ -135,3 +134,4 @@ if st.button('Start Simulation'):
     st.write(f"Final Portfolio Value: ${final_portfolio_value:.2f}")
     st.write(f"Current Cash: ${cash:.2f}")
     st.write(f"ROI: {roi:.2f}%")
+
