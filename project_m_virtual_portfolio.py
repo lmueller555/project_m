@@ -11,8 +11,8 @@ start_date = pd.to_datetime(selected_start_date)
 if st.button('Start Simulation'):
 
     # Load the dataset directly from GitHub
-    #dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
-    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main//Updated_Dataset_with_New_Signals.csv'
+    dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Test2.csv'
+    #dataset_url = 'https://raw.githubusercontent.com/lmueller555/project_m/main//Updated_Dataset_with_New_Signals.csv'
     data_sorted = pd.read_csv(dataset_url)
     data_sorted['Date'] = pd.to_datetime(data_sorted['Date'])
     data_sorted = data_sorted.sort_values(by='Date')
@@ -74,7 +74,7 @@ if st.button('Start Simulation'):
         for index, row in today_data.iterrows():
             if row['30 Day Sell Signal'] == 1:
                 next_sell_day = unique_dates[min(
-                    today_index + 1, len(unique_dates)-1)]
+                    today_index + 14, len(unique_dates)-1)]
                 if next_sell_day not in sell_signals:
                     sell_signals[next_sell_day] = []
                 sell_signals[next_sell_day].append(row['Company'])
