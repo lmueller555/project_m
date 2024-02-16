@@ -100,7 +100,7 @@ if st.button('Start Simulation'):
                         'shares': shares_to_buy, 'buy_price': next_day_open_price}
 
                     print(
-                        f"Buy Order: {row['Company']} at ${next_day_open_price} for {shares_to_buy:.2f} shares. Amount Spent: ${amount_to_spend:.2f}")
+                        f"Buy Order for {row['Company']} will be placed on {next_day.strftime('%Y-%m-%d')} at ${next_day_open_price:.2f} for {shares_to_buy:.2f} shares. Amount Spent: ${amount_to_spend:.2f}. Will sell on: {sell_date.strftime('%Y-%m-%d')}")
                     print(f"Will sell on: {sell_date.strftime('%Y-%m-%d')}")
                 else:
                     print(
