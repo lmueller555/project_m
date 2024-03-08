@@ -5,7 +5,7 @@ import pandas as pd
 st.title('Portfolio Simulation')
 
 # Load the dataset
-file_path = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Indicators_Ranked.csv'
+file_path = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Signals_Ranked.csv'
 df = pd.read_csv(file_path)
 
 # Convert 'Date' to datetime and sort the dataframe
