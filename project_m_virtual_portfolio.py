@@ -27,7 +27,7 @@ start_date_pd = pd.Timestamp(start_date)
 end_date_pd = pd.Timestamp(end_date)
 
 # Filter the dataframe based on the selected date range
-df_filtered = df_sorted[(df_sorted['Date'] >= start_date) & (df_sorted['Date'] <= end_date)]
+df_filtered = df_sorted[(df_sorted['Date'] >= start_date_pd) & (df_sorted['Date'] <= end_date_pd)]
 date_index = df_filtered['Date'].unique()
 
 # Initialize variables for the backtest
@@ -102,7 +102,7 @@ if st.button('Run Simulation'):
 
     # Plotting the total portfolio value over time using Streamlit
     chart_data = pd.DataFrame({
-        'Date': pd.to_datetime(date_index),
+        'Date': date_index,
         'Total Portfolio Value': portfolio_values
     }).set_index('Date')
     st.line_chart(chart_data)
