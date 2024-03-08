@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Streamlit app title
-st.title('Portfolio Simulation')
+st.title('Project M Portfolio Simulation')
 
 # Load the dataset
 file_path = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Signals_Ranked.csv'
