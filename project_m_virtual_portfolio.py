@@ -12,7 +12,7 @@ df = pd.read_csv(file_path)
 df['Date'] = pd.to_datetime(df['Date'])
 df_sorted = df.sort_values(by='Date')
 
-# Define the minimum and maximum dates available in the dataset
+# Define the minimum and maximum dates available in the dataset for date input limits
 min_date = df_sorted['Date'].min()
 max_date = df_sorted['Date'].max()
 
@@ -21,6 +21,10 @@ start_date = st.date_input('Start date', value=min_date, min_value=min_date, max
 end_date = st.date_input('End date', value=max_date, min_value=min_date, max_value=max_date)
 initial_investment = st.number_input('Initial Investment Amount', min_value=0, value=50000, step=1000)
 monthly_contribution = st.number_input('Monthly Contribution Amount', min_value=0, value=3000, step=100)
+
+# Convert the start_date and end_date to pd.Timestamp to match dtype for comparison
+start_date_pd = pd.Timestamp(start_date)
+end_date_pd = pd.Timestamp(end_date)
 
 # Filter the dataframe based on the selected date range
 df_filtered = df_sorted[(df_sorted['Date'] >= start_date) & (df_sorted['Date'] <= end_date)]
