@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Streamlit app title
-st.title('Project M Portfolio Simulation')
+st.title('Portfolio Simulation')
 
 # Load the dataset
 file_path = 'https://raw.githubusercontent.com/lmueller555/project_m/main/Updated_Dataset_with_Signals_Ranked.csv'
@@ -12,14 +12,18 @@ df = pd.read_csv(file_path)
 df['Date'] = pd.to_datetime(df['Date'])
 df_sorted = df.sort_values(by='Date')
 
+# Define the minimum and maximum dates available in the dataset
+min_date = df_sorted['Date'].min()
+max_date = df_sorted['Date'].max()
+
 # User inputs for the simulation
-start_date = st.date_input('Start date', value=pd.to_datetime(df_sorted['Date'].min()))
-end_date = st.date_input('End date', value=pd.to_datetime(df_sorted['Date'].max()))
+start_date = st.date_input('Start date', value=min_date, min_value=min_date, max_value=max_date)
+end_date = st.date_input('End date', value=max_date, min_value=min_date, max_value=max_date)
 initial_investment = st.number_input('Initial Investment Amount', min_value=0, value=50000, step=1000)
 monthly_contribution = st.number_input('Monthly Contribution Amount', min_value=0, value=3000, step=100)
 
 # Filter the dataframe based on the selected date range
-df_filtered = df_sorted[(df_sorted['Date'] >= pd.to_datetime(start_date)) & (df_sorted['Date'] <= pd.to_datetime(end_date))]
+df_filtered = df_sorted[(df_sorted['Date'] >= start_date) & (df_sorted['Date'] <= end_date)]
 date_index = df_filtered['Date'].unique()
 
 # Initialize variables for the backtest
@@ -43,7 +47,6 @@ def calculate_portfolio_value(portfolio, current_date):
 if st.button('Run Simulation'):
     for i, current_date in enumerate(date_index):
         contribution_counter += 1
-        # Adjusted for monthly contributions based on trading days (~22 trading days per month)
         if contribution_counter == 22:
             cash_available += monthly_contribution
             contribution_counter = 0
@@ -95,10 +98,7 @@ if st.button('Run Simulation'):
 
     # Plotting the total portfolio value over time using Streamlit
     chart_data = pd.DataFrame({
-        'Date': date_index,
+        'Date': pd.to_datetime(date_index),
         'Total Portfolio Value': portfolio_values
     }).set_index('Date')
     st.line_chart(chart_data)
-
-
-
