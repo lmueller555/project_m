@@ -32,12 +32,21 @@ date_index = df_filtered['Date'].unique()
 
 # Initialize variables for the backtest
 cash_available = initial_investment
-portfolio = {}  # Changed to a dictionary to store active positions by company
+portfolio = []  # To store active positions
 trades = []  # To log the outcome of each trade
 portfolio_values = []  # To store the total portfolio value for plotting
 contribution_counter = 0  # Counter to track trading days for contributions
-line_chart_placeholder = st.empty()  # Placeholder for the line chart
-bar_chart_placeholder = st.empty()  # Placeholder for the bar chart
+chart_placeholder = st.empty()
+
+# Function to calculate portfolio value
+def calculate_portfolio_value(portfolio, current_date):
+    value = 0
+    for position in portfolio:
+        current_price_data = df_filtered[(df_filtered['Company'] == position['company']) & (df_filtered['Date'] == current_date)]
+        if not current_price_data.empty:
+            current_price = current_price_data.iloc[0]['Close/Last']
+            value += position['shares_bought'] * current_price
+    return value
 
 # Backtesting logic
 if st.button('Run Simulation'):
@@ -68,41 +77,37 @@ if st.button('Run Simulation'):
                             invest_amount = max_shares_to_buy * next_open_price
                             cash_available -= invest_amount
                             shares_bought = invest_amount / next_open_price
-                            # Update portfolio dictionary
-                            if row['Company'] in portfolio:
-                                portfolio[row['Company']] += shares_bought
-                            else:
-                                portfolio[row['Company']] = shares_bought
                             sell_date_index = i + 32 if i + 32 < len(date_index) else -1
                             sell_date = date_index[sell_date_index]
-                            # Append to trades for later removal logic
-                            trades.append({'company': row['Company'], 'sell_date': sell_date, 'shares_sold': shares_bought})
+                            portfolio.append({
+                                'company': row['Company'],
+                                'sell_date': sell_date,
+                                'shares_bought': shares_bought,
+                                'buy_price': next_open_price
+                            })
 
-        # Remove sold positions from the portfolio
-        for trade in trades:
-            if current_date == trade['sell_date']:
-                portfolio[trade['company']] -= trade['shares_sold']
-                if portfolio[trade['company']] <= 0:
-                    del portfolio[trade['company']]
+        for position in portfolio[:]:
+            if current_date == position['sell_date']:
+                sell_day_data = df_filtered[(df_filtered['Company'] == position['company']) & (df_filtered['Date'] == position['sell_date'])]
+                if not sell_day_data.empty:
+                    sell_price = sell_day_data.iloc[0]['Close/Last']
+                    profit = (sell_price - position['buy_price']) * position['shares_bought']
+                    cash_available += position['shares_bought'] * sell_price
+                    portfolio.remove(position)
+                    trades.append(profit > 0)
 
-        # Update line chart with total portfolio value
-        portfolio_value = sum([calculate_portfolio_value({company: shares}, current_date) for company, shares in portfolio.items()])
+        portfolio_value = calculate_portfolio_value(portfolio, current_date)
         total_value = cash_available + portfolio_value
         portfolio_values.append(total_value)
-        line_chart_data = pd.DataFrame({
+
+        # Update the chart data and plot
+        chart_data = pd.DataFrame({
             'Date': date_index[:i+1],
             'Total Portfolio Value': portfolio_values
         }).set_index('Date')
-        line_chart_placeholder.line_chart(line_chart_data)
+        chart_placeholder.line_chart(chart_data)
 
-        # Update bar chart with currently held stocks
-        bar_chart_data = pd.DataFrame({
-            'Company': list(portfolio.keys()),
-            'Shares': list(portfolio.values())
-        })
-        bar_chart_placeholder.bar_chart(bar_chart_data.set_index('Company'))
-
-    progress_bar.empty()  # Optionally, remove the progress bar after completion
+    progress_bar.empty()
 
     # Adjustments for total contributions made
     total_contributions = initial_investment + (monthly_contribution * (len(date_index) // 22))
