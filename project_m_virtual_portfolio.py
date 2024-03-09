@@ -49,7 +49,13 @@ def calculate_portfolio_value(portfolio, current_date):
 
 # Backtesting logic
 if st.button('Run Simulation'):
+    total_days = len(date_index)
+    progress_bar = st.progress(0)
+    
     for i, current_date in enumerate(date_index):
+        # Update the progress bar
+        progress_bar.progress((i + 1) / total_days)
+        
         contribution_counter += 1
         if contribution_counter == 22:
             cash_available += monthly_contribution
@@ -75,6 +81,7 @@ if st.button('Run Simulation'):
                                 'shares_bought': shares_bought,
                                 'buy_price': next_open_price
                             })
+
         for position in portfolio[:]:
             if current_date == position['sell_date']:
                 sell_day_data = df_filtered[(df_filtered['Company'] == position['company']) & (df_filtered['Date'] == position['sell_date'])]
@@ -84,9 +91,12 @@ if st.button('Run Simulation'):
                     cash_available += position['shares_bought'] * sell_price
                     portfolio.remove(position)
                     trades.append(profit > 0)
+
         portfolio_value = calculate_portfolio_value(portfolio, current_date)
         total_value = cash_available + portfolio_value
         portfolio_values.append(total_value)
+
+    progress_bar.empty()  # Optionally, remove the progress bar after completion
 
     # Adjustments for total contributions made
     total_contributions = initial_investment + (monthly_contribution * (len(date_index) // 22))
