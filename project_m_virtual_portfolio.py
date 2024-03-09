@@ -51,10 +51,12 @@ def calculate_portfolio_value(portfolio, current_date):
 if st.button('Run Simulation'):
     total_days = len(date_index)
     progress_bar = st.progress(0)
+    status_text = st.empty()  # Placeholder for dynamic text
     
     for i, current_date in enumerate(date_index):
         # Update the progress bar
         progress_bar.progress((i + 1) / total_days)
+        status_text.text(f"Simulating trading day {i + 1} of {total_days} ({progress * 100:.2f}%)")
         
         contribution_counter += 1
         if contribution_counter == 22:
