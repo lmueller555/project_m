@@ -36,6 +36,7 @@ portfolio = []  # To store active positions
 trades = []  # To log the outcome of each trade
 portfolio_values = []  # To store the total portfolio value for plotting
 contribution_counter = 0  # Counter to track trading days for contributions
+chart_placeholder = st.empty()
 
 # Function to calculate portfolio value
 def calculate_portfolio_value(portfolio, current_date):
@@ -99,7 +100,14 @@ if st.button('Run Simulation'):
         total_value = cash_available + portfolio_value
         portfolio_values.append(total_value)
 
-    progress_bar.empty()  # Optionally, remove the progress bar after completion
+        # Update the chart data and plot
+        chart_data = pd.DataFrame({
+            'Date': date_index[:i+1],
+            'Total Portfolio Value': portfolio_values
+        }).set_index('Date')
+        chart_placeholder.line_chart(chart_data)
+
+    progress_bar.empty()
 
     # Adjustments for total contributions made
     total_contributions = initial_investment + (monthly_contribution * (len(date_index) // 22))
@@ -112,10 +120,3 @@ if st.button('Run Simulation'):
     st.write(f"Total Contributions: ${total_contributions:,.2f}")
     st.write(f"ROI: {roi:.2f}%")
     st.write(f"Trading Win Rate: {win_rate:.2f}%")
-
-    # Plotting the total portfolio value over time using Streamlit
-    chart_data = pd.DataFrame({
-        'Date': date_index,
-        'Total Portfolio Value': portfolio_values
-    }).set_index('Date')
-    st.line_chart(chart_data)
