@@ -54,8 +54,9 @@ if st.button('Run Simulation'):
     status_text = st.empty()  # Placeholder for dynamic text
     
     for i, current_date in enumerate(date_index):
-        # Update the progress bar
-        progress_bar.progress((i + 1) / total_days)
+        # Update the progress bar and status text
+        progress = (i + 1) / total_days
+        progress_bar.progress(progress)
         status_text.text(f"Simulating trading day {i + 1} of {total_days} ({progress * 100:.2f}%)")
         
         contribution_counter += 1
