@@ -37,6 +37,7 @@ trades = []  # To log the outcome of each trade
 portfolio_values = []  # To store the total portfolio value for plotting
 contribution_counter = 0  # Counter to track trading days for contributions
 chart_placeholder = st.empty()
+portfolio_chart_placeholder = st.empty()  # Placeholder for the portfolio bar graph
 
 # Function to calculate portfolio value
 def calculate_portfolio_value(portfolio, current_date):
@@ -47,6 +48,17 @@ def calculate_portfolio_value(portfolio, current_date):
             current_price = current_price_data.iloc[0]['Close/Last']
             value += position['shares_bought'] * current_price
     return value
+
+# Function to update and display the portfolio bar graph
+def update_portfolio_graph(portfolio):
+    if portfolio:
+        companies = [position['company'] for position in portfolio]
+        shares = [position['shares_bought'] for position in portfolio]
+        portfolio_df = pd.DataFrame({'Company': companies, 'Shares': shares})
+        portfolio_chart = portfolio_df.groupby('Company')['Shares'].sum().sort_values(ascending=True).plot(kind='barh', figsize=(10, 6))
+        portfolio_chart_placeholder.pyplot(portfolio_chart.figure)
+    else:
+        portfolio_chart_placeholder.write("No current stocks held in the portfolio.")
 
 # Backtesting logic
 if st.button('Run Simulation'):
@@ -106,6 +118,9 @@ if st.button('Run Simulation'):
             'Total Portfolio Value': portfolio_values
         }).set_index('Date')
         chart_placeholder.line_chart(chart_data)
+        
+        # Update and display the portfolio bar graph
+        update_portfolio_graph(portfolio)
 
     progress_bar.empty()
 
@@ -120,3 +135,4 @@ if st.button('Run Simulation'):
     st.write(f"Total Contributions: ${total_contributions:,.2f}")
     st.write(f"ROI: {roi:.2f}%")
     st.write(f"Trading Win Rate: {win_rate:.2f}%")
+
