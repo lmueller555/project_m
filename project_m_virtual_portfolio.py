@@ -55,8 +55,8 @@ def update_portfolio_graph(portfolio):
         companies = [position['company'] for position in portfolio]
         shares = [position['shares_bought'] for position in portfolio]
         portfolio_df = pd.DataFrame({'Company': companies, 'Shares': shares})
-        portfolio_chart = portfolio_df.groupby('Company')['Shares'].sum().sort_values(ascending=True).plot(kind='barh', figsize=(10, 6))
-        portfolio_chart_placeholder.pyplot(portfolio_chart.figure)
+        aggregated_data = portfolio_df.groupby('Company')['Shares'].sum().reset_index()
+        portfolio_chart_placeholder.bar_chart(aggregated_data.rename(columns={'Company': 'index'}).set_index('index'))
     else:
         portfolio_chart_placeholder.write("No current stocks held in the portfolio.")
 
@@ -135,4 +135,3 @@ if st.button('Run Simulation'):
     st.write(f"Total Contributions: ${total_contributions:,.2f}")
     st.write(f"ROI: {roi:.2f}%")
     st.write(f"Trading Win Rate: {win_rate:.2f}%")
-
